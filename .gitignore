@@ -10,3 +10,5 @@ O.Common/
 
 .*.swp
 *.cmd
+O.7.0.7_*
+deviseghal.Makefile
