@@ -713,7 +713,7 @@ long devIsegHalWrite( dbCommon *prec ) {
     recGblSetSevr( prec, WRITE_ALARM, INVALID_ALARM ); // Set record to WRITE_ALARM
     return ERROR;
   }
-  //memcpy( pinfo->value, value, VALUE_SIZE ); 
+  memcpy( pinfo->value, value, VALUE_SIZE ); 
   prec->pact = (epicsUInt8)true; // signal that the  write operation will use callback
   pinfo->ioStatus = ISEG_OK;
   // record "normally" processed
