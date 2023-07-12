@@ -9,4 +9,4 @@ O.linux-*/
 O.Common/
 
 .*.swp
-
+*.cmd

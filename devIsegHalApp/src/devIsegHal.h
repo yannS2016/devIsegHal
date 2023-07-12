@@ -32,8 +32,8 @@
 #include <stdbool.h>
 
 /* isegHAL includes */
-#include <isegclientapi.h>
-
+#include <isegapi.h>
+#include <isegremoteapi.h>
 /* EPICS includes */
 #include <callback.h>
 #include <dbCommon.h>
@@ -77,8 +77,18 @@ typedef struct {
   const struct link *ioLink;
   const char   access[ACCESS_SIZE];
   const char   type[DATA_TYPE_SIZE];
-  const bool   registerCallback;
+  const bool   registerIOInterrupt;//Modified
 } devIsegHal_rec_t;
+
+/**
+* @brief Record Configuration
+*
+* Used during to define the type of processing request
+*/
+typedef enum {
+	P_ASYNC = 0,
+	P_IO_INTR,
+}	devIsegHal_pflags_t;
 
 /**
  * @brief Private Device Data
@@ -92,7 +102,11 @@ typedef struct {
   CALLBACK *pcallback;                      /**< Address of EPICS callback structure */
   IOSCANPVT ioscanpvt;                      /**< EPICS Structure needed for I/O Intrupt handling*/
   char value[VALUE_SIZE];                   /**< Value cstring from isegHAL */
-  epicsTimeStamp time;                      /**< Timestamp of last change from isegHAL */
+  char quality[QUALITY_SIZE];
+	epicsTimeStamp time;                      /**< Timestamp of last change from isegHAL */
+	char rtime[TIME_SIZE];										/**< raw time from isegHAL item*/
+	devIsegHal_pflags_t pflag;								/**< Processing request flag */
+	IsegResult ioStatus;											/**< store iostatus from worker thread */
 } devIsegHal_info_t;
 
 #ifdef __cplusplus

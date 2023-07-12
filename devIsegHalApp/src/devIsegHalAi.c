@@ -104,6 +104,7 @@ static long devIsegHalInitRecord_ai( aiRecord *prec ){
 static long devIsegHalRead_ai( dbCommon *prec, char* value ) {
   aiRecord *pai = (aiRecord*)prec;
   epicsFloat64 buffer = 0.;
+	//printf( "devIsegHalRead_ai: Reading item '%s'\n", prec->name);
   if( sscanf( value, "%lf", &buffer ) != 1 ) {
     return ERROR;
   }

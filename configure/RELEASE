@@ -22,16 +22,16 @@
 # the CONFIG_SITE file.
 
 # Variables and paths to dependent modules:
-MODULES = /usr/local/epics/synApps_6.1__base.7.0.7/support
+#MODULES = /usr/local/epics/synApps_6.1__base.7.0.7/support
 #MYMODULE = $(MODULES)/my-module
 
 # If using the sequencer, point SNCSEQ at its top directory:
 #SNCSEQ = $(MODULES)/seq-ver
-AUTOSAVE = $(MODULES)/autosave-R5-10-2
-CALC = $(MODULES)/calc-R3-7-4
-ISEGHAL=/usr/local/epics/drivers/isegHAL
+#AUTOSAVE = $(MODULES)/autosave-R5-10-2
+#CALC = $(MODULES)/calc-R3-7-4
+ISEGHAL=/usr/local/epics/drivers/iseghal
 # EPICS_BASE should appear last so earlier modules can override stuff:
-EPICS_BASE = /usr/local/epics/base7
+#EPICS_BASE = /epics-local/base-7.0.7
 
 # Set RULES here if you want to use build rules from somewhere
 # other than EPICS_BASE:

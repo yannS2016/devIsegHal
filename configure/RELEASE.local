@@ -1,1 +1,1 @@
-EPICS_BASE = /usr/local/epics/base7
+EPICS_BASE = /epics-local/base-7.0.7

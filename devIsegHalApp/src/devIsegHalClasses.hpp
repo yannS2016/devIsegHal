@@ -55,6 +55,11 @@ class isegHalConnectionHandler {
    bool connect( std::string const& name, std::string const& interface );
    bool connected( std::string const& name );
    void disconnect( std::string const& interface );
+	 std::vector<std::string> getHalInterfaces();
+	 std::string getHalInterface();
+	 std::string getName();
+	 void setName( std::string name );
+	 void storeHalNames( std::vector<std::string> &dstinterfaces );
 
  private:
   isegHalConnectionHandler() {};
@@ -63,6 +68,8 @@ class isegHalConnectionHandler {
   isegHalConnectionHandler& operator=( isegHalConnectionHandler const& rother ); //!< Copy assignment operator not implemented
 
   std::vector< std::string > _interfaces;
+	std::string _halInterface;
+	std::string _name;
 };
 
 //! @brief   thread monitoring set values from isegHAL
@@ -95,5 +102,25 @@ class isegHalThread: public epicsThreadRunable {
 };
 
 
+class isegHalTaskThread: public epicsThreadRunable {
+ public:
+  isegHalTaskThread();
+  virtual ~isegHalTaskThread();
+  virtual void run();
+  epicsThread thread;
+
+  inline void changeIntervall( double val ) { _pause_ = val; }
+  inline double getIntervall(){ return _pause_; }
+
+  inline void setDbgLvl( int dbglvl ) { _debug_ = dbglvl; }
+  inline void disable() { _run_ = false; }
+  inline void enable() { _run_ = true; }
+
+ private:
+  bool _run_;
+  double _pause_;
+  unsigned _debug_;
+  std::vector< std::string > _interfaces_;
+};
 #endif
 

@@ -4,9 +4,9 @@ include $(TOP)/configure/CONFIG
 #----------------------------------------
 #  ADD MACRO DEFINITIONS AFTER THIS LINE
 #=============================
-devIsegHal_SYS_LIBS += isegHAL-client
-isegIoc_SYS_LIBS += isegHAL-client
-
+devIsegHal_SYS_LIBS += isegHAL-service
+isegIoc_SYS_LIBS += isegHAL-service
+CHECK_TIMESTAMPS = 1
 ifneq ($(ISEGHAL),)
     USR_INCLUDES += -I$(ISEGHAL) -I$(ISEGHAL)/include
     USR_LDFLAGS  += -L$(ISEGHAL) -L$(ISEGHAL)/lib
