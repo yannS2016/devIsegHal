@@ -126,22 +126,12 @@ static std::ostream& operator<<( std::ostream& ost, const IsegResult& result ) {
 //! Disconnects all registered interfaces
 //------------------------------------------------------------------------------
 isegHalConnectionHandler::~isegHalConnectionHandler() {
-/*  std::vector< std::string >::iterator it = _interfaces.begin();
-  for( ; it != _interfaces.end(); ++it ) {
-  	IsegResult status = iseg_disconnect( it->c_str() );
-    if ( ISEG_OK != status ) {
-      std::cerr << "\033[31;1m Cannot disconnect from isegHAL interface '"
-                << (*it) << "'.\033[0m"
-                << std::endl;
-  	}
-  }*/
   devIsegHal_queue_t qmsg = { NULL, CLOSE_CONN, NULL};
   if (epicsMessageQueueTrySend(isegClientQueue, &qmsg, sizeof(devIsegHal_queue_t))){
        fprintf( stderr, "\033[31;1m: isegHal Mgt Queue Overflowed \033[0m\n" );
   }
- _interfaces.clear();
-std::cout << "(" << __FUNCTION__ << ") Cleaning up: " << epicsThreadGetNameSelf() << std::endl;
-//epicsThreadSleep(10);
+  _interfaces.clear();
+  std::cout << "(" << __FUNCTION__ << ") Cleaning up: " << epicsThreadGetNameSelf() << std::endl;
 }
 
 //------------------------------------------------------------------------------
@@ -159,25 +149,24 @@ isegHalConnectionHandler& isegHalConnectionHandler::instance() {
 }
 
   /*Retrun the isegHAL server interface*/
+std::string isegHalConnectionHandler::getHalInterface() {
+  return _halInterface;
+}
 
-  std::string isegHalConnectionHandler::getHalInterface() {
-    return _halInterface;
-  }
+std::string isegHalConnectionHandler::getName() {
+  return _name;
+}
 
-  std::string isegHalConnectionHandler::getName() {
-          return _name;
-  }
+void isegHalConnectionHandler::setName(std::string name) {
+  _name = name;
+}
 
-  void isegHalConnectionHandler::setName(std::string name) {
-      _name = name;
+void isegHalConnectionHandler::storeHalNames(std::vector<std::string> &dstinterfaces) {
+	std::vector< std::string >::iterator it = _interfaces.begin();
+	for( ; it != _interfaces.end(); ++it ) {
+    dstinterfaces.push_back( (*it) );
   }
-
-  void isegHalConnectionHandler::storeHalNames(std::vector<std::string> &dstinterfaces) {
- 			std::vector< std::string >::iterator it = _interfaces.begin();
-  		for( ; it != _interfaces.end(); ++it ) {
-        dstinterfaces.push_back( (*it) );
-      }
-  }
+}
 //------------------------------------------------------------------------------
 //! @brief       Connect to new interface
 //! @param [in]  name        deviseg internal name of the interface handle
@@ -190,9 +179,7 @@ bool isegHalConnectionHandler::connect( std::string const& name, std::string con
   std::vector< std::string >::iterator it;
   it = std::find( _interfaces.begin(), _interfaces.end(), name );
   if( it != _interfaces.end() ) return true;
-
   //  std::cout << "Trying to connect to '" << interface << "'" << std::endl;
-
   IsegResult status = iseg_connect( name.c_str(), interface.c_str(), NULL );
   if ( ISEG_OK != status ) {
     std::cerr << "\033[31;1mCannot connect to isegHAL interface '" << interface << "'\n"
@@ -245,190 +232,146 @@ void isegHalConnectionHandler::disconnect( std::string const& name ) {
 }
 
 void regCallback( dbCommon* prec, devIsegHal_info_t *pinfo ) {
-    //devIsegHal_info_t *pinfo = (devIsegHal_info_t *)prec->dpvt;
-    if( !pinfo->pcallback ) {
-      CALLBACK *pcallback = new CALLBACK;
-      callbackSetCallback( devIsegHalCallback, pcallback );
-      callbackSetUser( (void*)prec, pcallback );
-      callbackSetPriority( priorityLow, pcallback );
-      pinfo->pcallback = pcallback;
-    }
+  //devIsegHal_info_t *pinfo = (devIsegHal_info_t *)prec->dpvt;
+  if( !pinfo->pcallback ) {
+    CALLBACK *pcallback = new CALLBACK;
+    callbackSetCallback( devIsegHalCallback, pcallback );
+    callbackSetUser( (void*)prec, pcallback );
+    callbackSetPriority( priorityLow, pcallback );
+    pinfo->pcallback = pcallback;
+  }
 }
 
 static void isegMgtTask() {
-    std::cout << "(" << __FUNCTION__ << ") function in " << __FILE__ << " (line: "
-    << __LINE__ << ") was called by thread id: " << epicsThreadGetNameSelf() << std::endl;
-
-    std::string name = /*"_" +*/ isegHalConnectionHandler::instance().getName() + "_MOD";
-    std::string interface =  isegHalConnectionHandler::instance().getHalInterface();
-    isegHalConnectionHandler::instance().setName(name);
+  std::cout << "(" << __FUNCTION__ << ") function in  thread id: " << epicsThreadGetNameSelf() << std::endl;
+  std::string name = /*"_" +*/ isegHalConnectionHandler::instance().getName() + "_MOD";
+  std::string interface =  isegHalConnectionHandler::instance().getHalInterface();
+  isegHalConnectionHandler::instance().setName(name);
 
    // std::cout << "using HAL version [" << iseg_getVersionString() << "]" << std::endl;
-    if( !isegHalConnectionHandler::instance().connect(name, interface ) ){
-        fprintf( stderr, "\033[31;1mCannot connect to isegHAL interface %s(%s)\033[0m\n", name.c_str(), interface.c_str());
-    }
-    std::vector<std::string> _sinterfaces;
-    //keep a copy of created interfaces for cleanup 
-    isegHalConnectionHandler::instance().storeHalNames( _sinterfaces );
+  if( !isegHalConnectionHandler::instance().connect(name, interface ) ){
+    fprintf( stderr, "\033[31;1mCannot connect to isegHAL interface %s(%s)\033[0m\n", name.c_str(), interface.c_str());
+  }
+  std::vector<std::string> _sinterfaces;
+  //keep a copy of created interfaces for cleanup 
+  isegHalConnectionHandler::instance().storeHalNames( _sinterfaces );
 
-    devIsegHal_queue_t rmsg;
-    while(1) {
-      /* Wait for event from client task */
-			int msg = epicsMessageQueuePending	(isegClientQueue );	
+  devIsegHal_queue_t rmsg;
+  while(1) {
+    /* Wait for event from client task */
+		int msg = epicsMessageQueuePending	(isegClientQueue );	
       //std::cout << "Number of Messages in the queue: " << msg << " (" << __FUNCTION__ << ")" << " thread id: " << epicsThreadGetNameSelf() << std::endl;
 
-      int rcv = epicsMessageQueueReceive(isegClientQueue, &rmsg, sizeof(rmsg));
-      //std::cout << "Pending request: " << rcv << " (" << __FUNCTION__ << ")" << "was called by thread id: " << epicsThreadGetNameSelf() << std::endl;
-			if( rcv  < 1 ) continue;
+    int rcv = epicsMessageQueueReceive(isegClientQueue, &rmsg, sizeof(rmsg));
+    //std::cout << "Pending request: " << rcv << " (" << __FUNCTION__ << ")" << "was called by thread id: " << epicsThreadGetNameSelf() << std::endl;
+		if( rcv  < 1 ) continue;
 
-			std::string _name = isegHalConnectionHandler::instance().getName();
-			devIsegHal_req_t  _req = rmsg.reqType;
-			/*if( _req == CLOSE_CONN) {
-					std::cout << "Close Connection request: " << " (" << __FUNCTION__ << ")" << "was called by thread id: " 
-										<< epicsThreadGetNameSelf() << std::endl;
-              //IsegResult status = iseg_disconnect( "ETHHAL_MOD" );
-              //if ( ISEG_OK != status ) {
-              //  std::cerr << "\033[31;1m Cannot disconnect from isegHAL interface '"
-                //  << "(*it)" << "'.\033[0m"
-                  //<< std::endl;
-             // }
-					epicsThreadSleep(3);
-					std::cout << "Done waiting, need to close socket: " << " (" << __FUNCTION__ << ")" << "was called by thread id: "<< epicsThreadGetNameSelf() << std::endl;
-					continue;
-			}*/
-			
+		std::string _name = isegHalConnectionHandler::instance().getName();
+		devIsegHal_req_t  _req = rmsg.reqType;
 
-    	devIsegHal_info_t* _pdata = (devIsegHal_info_t*)rmsg.pdata;
-			if(!_pdata || _req == CLOSE_CONN) {
-/*						std::cout << "Closing socket " << " (" << __FUNCTION__ << ")" << " thread id: " 
-											<< epicsThreadGetNameSelf() << std::endl;epicsThreadSleep(4);iseg_disconnect( _name.c_str() );exit(0);*/
-				std::cout << "Closing socket " << " (" << __FUNCTION__ << ")" << " thread id: "
-                  << epicsThreadGetNameSelf() << std::endl;
-				epicsThreadSleep(1);
-				//epicsExitLater(0);
-  			std::vector< std::string >::iterator it = _sinterfaces.begin();
-  			for( ; it != _sinterfaces.end(); ++it ) {
+   	devIsegHal_info_t* _pdata = (devIsegHal_info_t*)rmsg.pdata;
+		if(!_pdata || _req == CLOSE_CONN) {
+      /*std::cout << "Closing socket " << " (" << __FUNCTION__ << ")" << " thread id: " 
+									<< epicsThreadGetNameSelf() << std::endl;*/
+			std::cout << "Closing socket " << " (" << __FUNCTION__ << ")" << " thread id: "
+                << epicsThreadGetNameSelf() << std::endl;
+			epicsThreadSleep(1);
+
+  		std::vector< std::string >::iterator it = _sinterfaces.begin();
+  	  for( ; it != _sinterfaces.end(); ++it ) {
   				IsegResult status = iseg_disconnect( it->c_str() );
-    			if ( ISEG_OK != status ) {
+    		if ( ISEG_OK != status ) {
       			std::cerr << "\033[31;1m Cannot disconnect from isegHAL interface '"
                 << (*it) << "'.\033[0m"
                 << std::endl;
-  				}
   			}
-				//epicsExit(0);
+  		}
+		}
+		devIsegHal_pflags_t _proc = _pdata->pflag;
 
+    std::string  _value = rmsg.value;
+    IsegItem item = EmptyIsegItem;
+
+    switch(_req) {
+      case GET_ITEM:
+        switch(_proc) {
+          case P_ASYNC:
+            item = iseg_getItem(_name.c_str(), (_pdata)->object);
+            memcpy( _pdata->quality, item.quality,  QUALITY_SIZE );
+            memcpy( _pdata->value, item.value, VALUE_SIZE );
+            memcpy( _pdata->rtime, item.timeStampLastChanged, TIME_SIZE );
+#ifdef CHECK_LAST_REFRESHED
+            memcpy( _pdata->rtime, item.timeStampLastChanged, TIME_SIZE );
+#endif
+            _pdata->pflag = _proc;  // better be sure;
+            callbackRequest( (_pdata)->pcallback );
+					break;
+          case P_IO_INTR:
+					{
+						//	std::cout << "GET_ITEM:P_IO_INTR  "<< _pdata->object<<"(" << __FUNCTION__ << ") thread id: " << epicsThreadGetNameSelf() << std::endl;
+            bool quality = true;
+   					bool timestampchanged = true;
+           	item = iseg_getItem(_name.c_str(), (_pdata)->object);
+           	if( strcmp( item.quality, ISEG_ITEM_QUALITY_OK ) != 0 ) quality = false;
+           	epicsUInt32 seconds = 0;
+     				epicsUInt32 microsecs = 0;
+            if( sscanf( item.timeStampLastChanged, "%u.%u", &seconds, &microsecs ) != 2 ) timestampchanged = false;
+            epicsTimeStamp time;
+           	time.secPastEpoch = seconds - POSIX_TIME_AT_EPICS_EPOCH;
+            time.nsec = microsecs * 100000;
+
+            if( quality && timestampchanged ) {
+              if( _pdata->time.secPastEpoch != time.secPastEpoch ||  _pdata->time.nsec != time.nsec ) {
+                // value was updated in isegHAL
+                memcpy( _pdata->value, item.value, VALUE_SIZE );
+                _pdata->time = time;
+                _pdata->pflag = _proc;  // better be sure;
+                callbackRequest( _pdata->pcallback );
+              }
+            }
+            break;
+					}
+					default:
+					break;
+        }
+				break;
+      case SET_ITEM:
+			{
+				std::cout << "SET_ITEM: "<< _pdata->object<< " (" << __FUNCTION__ << ") thread id: " << epicsThreadGetNameSelf() << std::endl;
+        myIsegHalThread->disable();
+        //std::cout << " Value to write: "<< _value.c_str() << " run from thread: " << epicsThreadGetNameSelf() << std::endl;
+        if( iseg_setItem( _pdata->interface, _pdata->object, _value.c_str() ) != ISEG_OK ) {
+          /*fprintf( stderr, "\033[31;1m%s Error while writing value '%s': '%s'\033[0m\n", _pdata->interface,_pdata->object, _value.c_str() );*/
+          _pdata->ioStatus = ISEG_ERROR;
+        }
+        _pdata->pflag = P_ASYNC; // Normal processing write always async
+        epicsTimeGetCurrent( &_pdata->time ); // get time after successful write to device
+        callbackRequest( _pdata->pcallback );
+       	break;
 			}
-			devIsegHal_pflags_t _proc = _pdata->pflag;
-      //devIsegHal_req_t  _req = rmsg.reqType;
-
-      std::string  _value = rmsg.value;
-      IsegItem item = EmptyIsegItem;
-
-      switch(_req) {
-
-        case GET_ITEM:
-					//std::cout << "GET_ITEM ("<< _pdata->object << __FUNCTION__ << ") thread id: " << epicsThreadGetNameSelf() << std::endl;
-          switch(_proc) {
-
-            case P_ASYNC:
-							//	std::cout << "GET_ITEM:P_ASYNC "<< _pdata->object<<"(" << __FUNCTION__ << ") thread id: " << epicsThreadGetNameSelf() << std::endl;
-              item = iseg_getItem(_name.c_str(), (_pdata)->object);
-              memcpy( _pdata->quality, item.quality,  QUALITY_SIZE );
-              memcpy( _pdata->value, item.value, VALUE_SIZE );
-              memcpy( _pdata->rtime, item.timeStampLastChanged, TIME_SIZE );
-    #ifdef CHECK_LAST_REFRESHED
-              memcpy( _pdata->rtime, item.timeStampLastChanged, TIME_SIZE );
-    #endif
-              _pdata->pflag = _proc;  // better be sure;
-              callbackRequest( (_pdata)->pcallback );
-						break;
-            case P_IO_INTR:
-							{
-
-								//	std::cout << "GET_ITEM:P_IO_INTR  "<< _pdata->object<<"(" << __FUNCTION__ << ") thread id: " << epicsThreadGetNameSelf() << std::endl;
-                bool quality = true;
-      					bool timestampchanged = true;
-              	item = iseg_getItem(_name.c_str(), (_pdata)->object);
-              	if( strcmp( item.quality, ISEG_ITEM_QUALITY_OK ) != 0 ) quality = false;
-
-             		epicsUInt32 seconds = 0;
-      					epicsUInt32 microsecs = 0;
-              	if( sscanf( item.timeStampLastChanged, "%u.%u", &seconds, &microsecs ) != 2 ) timestampchanged = false;
-              	epicsTimeStamp time;
-             		time.secPastEpoch = seconds - POSIX_TIME_AT_EPICS_EPOCH;
-              	time.nsec = microsecs * 100000;
-
-              	if( quality && timestampchanged ) {
-                	//std::cout << "GET_ITEM: P_IO_INTR (" << __FUNCTION__ << ") thread id: " << epicsThreadGetNameSelf()<< std::endl;
-                 	if( _pdata->time.secPastEpoch != time.secPastEpoch ||  _pdata->time.nsec != time.nsec ) {
-                  	// value was updated in isegHAL
-                 		// std::cout << "GET_ITEM: " << _proc << " : " << _pdata->object << " : "<<item.value <<  " (" << __FUNCTION__ << ") thread id: " << epicsThreadGetNameSelf()<< std::endl;
-                                                                        memcpy( _pdata->value, item.value, VALUE_SIZE );
-                  	_pdata->time = time;
-                  	_pdata->pflag = _proc;  // better be sure;
-                  	callbackRequest( _pdata->pcallback );
-                	}
-              	}
-            	break;
-						}
-						default:
-						break;
-          }
-				break;
-        case SET_ITEM:
-					{
-						std::cout << "SET_ITEM: "<< _pdata->object<< " (" << __FUNCTION__ << ") thread id: " << epicsThreadGetNameSelf() << std::endl;
-          	myIsegHalThread->disable();
-          	//std::cout << " Value to write: "<< _value.c_str() << " run from thread: " << epicsThreadGetNameSelf() << std::endl;
-
-          	if( iseg_setItem( _pdata->interface, _pdata->object, _value.c_str() ) != ISEG_OK ) {
-            	/*fprintf( stderr, "\033[31;1m%s Error while writing value '%s': '%s'\033[0m\n", _pdata->interface,_pdata->object, _value.c_str() );*/
-            	_pdata->ioStatus = ISEG_ERROR;
-          	}
-          	_pdata->pflag = P_ASYNC; // Normal processing write always async
-          	epicsTimeGetCurrent( &_pdata->time ); // get time after successful write to device
-          	callbackRequest( _pdata->pcallback );
-        		break;
-					}
-
-        case CLOSE_CONN:
-					{
-						std::cout << "CLOSE: (" << __FUNCTION__ << ") thread id: " << epicsThreadGetNameSelf() << std::endl;
-/*std::cout << "Closing Connexion: (" << __FUNCTION__ << ") thread id: " << epicsThreadGetNameSelf() << std::endl;
-          	std::vector< std::string >::iterator it = _sinterfaces.begin();
-          	for( ; it != _sinterfaces.end(); ++it ) {
-            	IsegResult status = iseg_disconnect( it->c_str() );
-            	if ( ISEG_OK != status ) {
-              	std::cerr << "\033[31;1m Cannot disconnect from isegHAL interface '"
-                	<< (*it) << "'.\033[0m"
-                	<< std::endl;
-            	}
-          	}*/
-        		break;
-					}
-				default:
-				break;
-      }
-	
+      case CLOSE_CONN:
+			{
+       	break;
+			}
+			default:
+			break;
     }
- }
-	bool isegInitWorkers() {
+  }
+}
+bool isegInitWorkers() {
+	std::cout << "Initializating Message Queue Worker Thread (" << __FUNCTION__ << ") thread id: " << epicsThreadGetNameSelf() << std::endl;
 
-		std::cout << "Initializating Message Queue Worker Thread (" << __FUNCTION__ << ") thread id: " << epicsThreadGetNameSelf() << std::endl;
+	/* Create a new message queue for this port*/
+	isegClientQueue = epicsMessageQueueCreate(RECV_Q_SIZE, sizeof(devIsegHal_queue_t));
+	if (isegClientQueue == NULL) return false;
+	/*  std::cout << "message queue created(" << __FUNCTION__ << ") called by thread id: " << epicsThreadGetNameSelf() << std::endl;*/
 
-		/* Create a new message queue for this port*/
-		isegClientQueue = epicsMessageQueueCreate(RECV_Q_SIZE, sizeof(devIsegHal_queue_t));
-		if (isegClientQueue == NULL) return false;
-				/*  std::cout << "message queue created(" << __FUNCTION__ << ") called by thread id: " << epicsThreadGetNameSelf() << std::endl;*/
-
-		if (epicsThreadCreate("isegACtrlTask", epicsThreadPriorityHigh, epicsThreadGetStackSize(epicsThreadStackMedium),
-			(EPICSTHREADFUNC)isegMgtTask, NULL) == 0) return false;
-
-		epicsThreadSleep(2);
-
-		std::cout << "(" << __FUNCTION__ << ") function called by thread id: " << epicsThreadGetNameSelf() << std::endl;
-		return true;
-	}
+	if (epicsThreadCreate("isegACtrlTask", epicsThreadPriorityHigh, epicsThreadGetStackSize(epicsThreadStackMedium),
+		(EPICSTHREADFUNC)isegMgtTask, NULL) == 0) return false;
+	epicsThreadSleep(2);
+	std::cout << "(" << __FUNCTION__ << ") function called by thread id: " << epicsThreadGetNameSelf() << std::endl;
+	return true;
+}
 
 //------------------------------------------------------------------------------
 //! @brief       Initialization of device support
@@ -438,38 +381,27 @@ static void isegMgtTask() {
 //------------------------------------------------------------------------------
 long devIsegHalInit( int after ) {
 
-		if ( 0 == after ) { // before records have been initialized
-
-			/*std::cout << "Device Support Init: Record not initialized: (" << __FUNCTION__ << ")  thread: "
-  							<< epicsThreadGetNameSelf() << std::endl;*/
-
-      static bool firstRunBefore = true;
-      if ( !firstRunBefore ) return 0;
+	if ( 0 == after ) { // before records have been initialized
+    static bool firstRunBefore = true;
+    if ( !firstRunBefore ) return 0;
     	firstRunBefore = false;
      	// create polling thread
  			myIsegHalThread = new isegHalThread();
 
-		} else {
+	} else {
+		std::string const& _name_ = isegHalConnectionHandler::instance().getName();
+		isegHalConnectionHandler::instance().disconnect(_name_) ;
 
-/*    	std::cout << "Device Support Init: Record initialized: (" << __FUNCTION__ << ") called by thread: "
- 								<< epicsThreadGetNameSelf() << std::endl;*/
-
-			std::string const& _name_ = isegHalConnectionHandler::instance().getName();
-			isegHalConnectionHandler::instance().disconnect(_name_) ;
-
-			 static bool firstRunAfter = true;
-      if ( !firstRunAfter ) return 0;
-      	firstRunAfter = false;
-      	// Initialise workers
-      	isegInitWorkers();
-      	// start thread
-      	myIsegHalThread->thread.start();
-    }
-
+		static bool firstRunAfter = true;
+    if ( !firstRunAfter ) return 0;
+      firstRunAfter = false;
+      // Initialise workers
+      isegInitWorkers();
+      // start thread
+      myIsegHalThread->thread.start();
+  }
   return OK;
-
 }
-
 //------------------------------------------------------------------------------
 //! @brief       Common initialization of the record
 //! @param [in]  prec       Address of the record calling this function
@@ -478,106 +410,102 @@ long devIsegHalInit( int after ) {
 //------------------------------------------------------------------------------
 long devIsegHalInitRecord( dbCommon *prec, const devIsegHal_rec_t *pconf ) {
 
-/*    std::cout << prec->name << " (" << __FUNCTION__ << ") init in thread:  "
-              << epicsThreadGetNameSelf() << std::endl;*/
+  devIsegHal_dset_t *pdset = (devIsegHal_dset_t *)prec->dset;
+  long status = OK;
 
-    devIsegHal_dset_t *pdset = (devIsegHal_dset_t *)prec->dset;
-    long status = OK;
+  if( INST_IO != pconf->ioLink->type ) {
+    std::cerr << prec->name << ": Invalid link type for INP/OUT field: "
+              << pamaplinkType[ pconf->ioLink->type ].strvalue
+              << std::endl;
+    return ERROR;
+  }
 
-    if( INST_IO != pconf->ioLink->type ) {
-      std::cerr << prec->name << ": Invalid link type for INP/OUT field: "
-                << pamaplinkType[ pconf->ioLink->type ].strvalue
-                << std::endl;
+  std::vector< std::string > options;
+  std::istringstream ss( pconf->ioLink->value.instio.string );
+  std::string option;
+  while( std::getline( ss, option, ' ' ) ) options.push_back( option );
+
+  if( options.size() != 2 ) {
+    std::cerr << prec->name << ": Invalid INP/OUT field: " << ss.str() << "\n"
+              << "    Syntax is \"@<isegItem> <Interface>\"" << std::endl;
+      return ERROR;
+  }
+
+  // Test if interface is connected to isegHAL server
+  if( !isegHalConnectionHandler::instance().connected( options.at(1) ) ) {
+    std::cerr << "\033[31;1m" << "isegHal interface " << options.at(1) << " not connected!"
+              << "\033[0m" << std::endl;
+    return ERROR;
+  }
+
+  IsegItemProperty isegItem = iseg_getItemProperty( options.at(1).c_str(), options.at(0).c_str() );
+  if( strcmp( isegItem.quality, ISEG_ITEM_QUALITY_OK ) != 0 ) {
+    fprintf( stderr, "\033[31;1m%s: Error while reading item property '%s' (Q: %s)\033[0m\n",
+            prec->name, options.at(0).c_str(), isegItem.quality );
+    return ERROR;
+  }
+
+  // "Vorsicht ist die Mutter der Porzelankiste",
+  // or "Better safe than sorry"
+  for ( size_t i = 0; i < strlen( pconf->access ); ++i ) {
+    if ( NULL == strchr( isegItem.access, pconf->access[i] ) ) {
+       fprintf( stderr, "\033[31;1m%s: Access rights of item '%s' don't match: %s|%s!\033[0m\n",
+               prec->name, isegItem.object, pconf->access, isegItem.access );
       return ERROR;
     }
-
-    std::vector< std::string > options;
-    std::istringstream ss( pconf->ioLink->value.instio.string );
-    std::string option;
-    while( std::getline( ss, option, ' ' ) ) options.push_back( option );
-
-    if( options.size() != 2 ) {
-      std::cerr << prec->name << ": Invalid INP/OUT field: " << ss.str() << "\n"
-                << "    Syntax is \"@<isegItem> <Interface>\"" << std::endl;
-      return ERROR;
-    }
-
-    // Test if interface is connected to isegHAL server
-    if( !isegHalConnectionHandler::instance().connected( options.at(1) ) ) {
-      std::cerr << "\033[31;1m" << "isegHal interface " << options.at(1) << " not connected!"
-                << "\033[0m" << std::endl;
-      return ERROR;
-    }
-
-    IsegItemProperty isegItem = iseg_getItemProperty( options.at(1).c_str(), options.at(0).c_str() );
-    if( strcmp( isegItem.quality, ISEG_ITEM_QUALITY_OK ) != 0 ) {
-      fprintf( stderr, "\033[31;1m%s: Error while reading item property '%s' (Q: %s)\033[0m\n",
-              prec->name, options.at(0).c_str(), isegItem.quality );
-      return ERROR;
-    }
-
-    // "Vorsicht ist die Mutter der Porzelankiste",
-    // or "Better safe than sorry"
-    for ( size_t i = 0; i < strlen( pconf->access ); ++i ) {
-      if ( NULL == strchr( isegItem.access, pconf->access[i] ) ) {
-        fprintf( stderr, "\033[31;1m%s: Access rights of item '%s' don't match: %s|%s!\033[0m\n",
-                prec->name, isegItem.object, pconf->access, isegItem.access );
-        return ERROR;
-      }
-    }
-    if ( strncmp( isegItem.type, pconf->type, strlen( pconf->type ) ) != 0 ) {
-      fprintf( stderr, "\033[31;1m%s: DataType '%s' of '%s' not supported by this record!\033[0m\n",
+  }
+  if ( strncmp( isegItem.type, pconf->type, strlen( pconf->type ) ) != 0 ) {
+    fprintf( stderr, "\033[31;1m%s: DataType '%s' of '%s' not supported by this record!\033[0m\n",
               prec->name, isegItem.type, isegItem.object );
-      return ERROR;
-    }
+    return ERROR;
+  }
+  
+  devIsegHal_info_t *pinfo = new devIsegHal_info_t;
+  memcpy( pinfo->object, isegItem.object, FULLY_QUALIFIED_OBJECT_SIZE );
+  strncpy( pinfo->interface, options.at(1).c_str(), 20 );
+  memcpy( pinfo->unit,   isegItem.unit,   UNIT_SIZE );
+  pinfo->pcallback = NULL;  // just to be sure
+  pinfo->ioStatus = ISEG_OK;
 
-    devIsegHal_info_t *pinfo = new devIsegHal_info_t;
-    memcpy( pinfo->object, isegItem.object, FULLY_QUALIFIED_OBJECT_SIZE );
-    strncpy( pinfo->interface, options.at(1).c_str(), 20 );
-    memcpy( pinfo->unit,   isegItem.unit,   UNIT_SIZE );
-    pinfo->pcallback = NULL;  // just to be sure
-    pinfo->ioStatus = ISEG_OK;
+  /// Get initial value from HAL
+  IsegItem item = iseg_getItem( pinfo->interface, pinfo->object );
+  if( strcmp( item.quality, ISEG_ITEM_QUALITY_OK ) != 0 ) {
+    fprintf( stderr, "\033[31;1m%s: Error while reading value '%s' from interface '%s': '%s' (Q: %s)\033[0m\n",
+           prec->name, item.object, pinfo->interface, item.value, item.quality );
+  }
+  memcpy( pinfo->quality, item.quality,  QUALITY_SIZE ); //  init  rec quality info
 
-    /// Get initial value from HAL
-    IsegItem item = iseg_getItem( pinfo->interface, pinfo->object );
-    if( strcmp( item.quality, ISEG_ITEM_QUALITY_OK ) != 0 ) {
-      fprintf( stderr, "\033[31;1m%s: Error while reading value '%s' from interface '%s': '%s' (Q: %s)\033[0m\n",
-              prec->name, item.object, pinfo->interface, item.value, item.quality );
-    }
-    memcpy( pinfo->quality, item.quality,  QUALITY_SIZE ); //  init  rec quality info
+  epicsUInt32 seconds = 0;
+  epicsUInt32 microsecs = 0;
+  if( sscanf( item.timeStampLastChanged, "%u.%u", &seconds, &microsecs ) != 2 ) {
+    fprintf( stderr, "\033[31;1m%s: Error parsing timestamp for '%s': %s\033[0m\n", prec->name, pinfo->object, item.timeStampLastChanged );
+  }
 
-    epicsUInt32 seconds = 0;
-    epicsUInt32 microsecs = 0;
-    if( sscanf( item.timeStampLastChanged, "%u.%u", &seconds, &microsecs ) != 2 ) {
-      fprintf( stderr, "\033[31;1m%s: Error parsing timestamp for '%s': %s\033[0m\n", prec->name, pinfo->object, item.timeStampLastChanged );
-    }
+  memcpy( pinfo->rtime, item.timeStampLastChanged,  TIME_SIZE ); // needed by worker thread
+  pinfo->time.secPastEpoch = seconds - POSIX_TIME_AT_EPICS_EPOCH;
+  pinfo->time.nsec = microsecs * 100000;
 
-    memcpy( pinfo->rtime, item.timeStampLastChanged,  TIME_SIZE ); // needed by worker thread
-    pinfo->time.secPastEpoch = seconds - POSIX_TIME_AT_EPICS_EPOCH;
-    pinfo->time.nsec = microsecs * 100000;
+  status = pdset->conv_val_str( prec, item.value );
+  if( ERROR == status ) {
+    fprintf( stderr, "\033[31;1m%s: Error parsing value for '%s': %s\033[0m\n", prec->name, pinfo->object, item.value );
+  }
 
-    status = pdset->conv_val_str( prec, item.value );
-    if( ERROR == status ) {
-      fprintf( stderr, "\033[31;1m%s: Error parsing value for '%s': %s\033[0m\n", prec->name, pinfo->object, item.value );
-    }
-    if( -2 == prec->tse ) prec->time = pinfo->time;
-
+  if( -2 == prec->tse ) prec->time = pinfo->time;
   // update interface
-    std::string _interface = options.at(1) + "_MOD";
-    strncpy( pinfo->interface, _interface.c_str(), 20 );
+  std::string _interface = options.at(1) + "_MOD";
+  strncpy( pinfo->interface, _interface.c_str(), 20 );
 
-    /// I/O Intr handling
-    scanIoInit( &pinfo->ioscanpvt );
-    // All Record will use Async Processing
-	  regCallback( prec, pinfo );
+  /// I/O Intr handling
+  scanIoInit( &pinfo->ioscanpvt );
+  // All Record will use Async Processing
+	regCallback( prec, pinfo );
 
-    if( pconf->registerIOInterrupt )
-          myIsegHalThread->registerInterrupt( prec, pinfo ); // register output recs and add to isegHal list
+  if( pconf->registerIOInterrupt )
+         myIsegHalThread->registerInterrupt( prec, pinfo ); // register output recs and add to isegHal list
 
-    prec->dpvt = pinfo;
-    prec->udf  = (epicsUInt8)false;
-
-    return OK;
+  prec->dpvt = pinfo;
+  prec->udf  = (epicsUInt8)false;
+  return OK;
 }
 
 //------------------------------------------------------------------------------
@@ -651,8 +579,7 @@ long devIsegHalGetIoIntInfo( int cmd, dbCommon *prec, IOSCANPVT *ppvt ) {
   devIsegHal_info_t *pinfo = (devIsegHal_info_t *)prec->dpvt;
   *ppvt = pinfo->ioscanpvt;
   if ( 0 == cmd ) {
-//		std::cout << prec->name <<" Registering IO Intr Recs (" << __FUNCTION__ << ") in thread: "
-//                << epicsThreadGetNameSelf() << std::endl;
+
     myIsegHalThread->registerInterrupt( prec, pinfo );
   } else {
     myIsegHalThread->cancelInterrupt( pinfo );
@@ -667,26 +594,25 @@ long devIsegHalGetIoIntInfo( int cmd, dbCommon *prec, IOSCANPVT *ppvt ) {
 //------------------------------------------------------------------------------
 long devIsegHalRead( dbCommon *prec ) {
 
-    devIsegHal_info_t *pinfo = (devIsegHal_info_t *)prec->dpvt;
-    devIsegHal_dset_t *pdset = (devIsegHal_dset_t *)prec->dset;
-    long status = OK;
+  devIsegHal_info_t *pinfo = (devIsegHal_info_t *)prec->dpvt;
+  devIsegHal_dset_t *pdset = (devIsegHal_dset_t *)prec->dset;
+  long status = OK;
 
   if( !prec->pact ) 
 	{
-      // record "normally" processed
-			pinfo->pflag = P_ASYNC;
-      devIsegHal_queue_t qmsg = { pinfo, GET_ITEM, NULL };
-      /*std::cout << prec->name <<":== Starting async read ==: (" << __FUNCTION__ << ") in thread: "
+    // record "normally" processed
+		pinfo->pflag = P_ASYNC;
+    devIsegHal_queue_t qmsg = { pinfo, GET_ITEM, NULL };
+    /*std::cout << prec->name <<":== Starting async read ==: (" << __FUNCTION__ << ") in thread: "
                 << epicsThreadGetNameSelf()
                 << std::endl;*/
-      /* Send it to the servicing task */
-      prec->pact = (epicsUInt8)true; // dont forget to set
-      if (epicsMessageQueueTrySend(isegClientQueue, &qmsg, sizeof(devIsegHal_queue_t))){
-        fprintf( stderr, "\033[31;1m%s: isegHal Mgt Queue Overflowed '%s': %s\033[0m\n", prec->name, pinfo->object, pinfo->value );
-        recGblSetSevr( prec, READ_ALARM, INVALID_ALARM ); // Set record to READ_ALARM
-        return ERROR;
-      }
-
+    /* Send it to the servicing task */
+    prec->pact = (epicsUInt8)true; // dont forget to set
+    if (epicsMessageQueueTrySend(isegClientQueue, &qmsg, sizeof(devIsegHal_queue_t))){
+      fprintf( stderr, "\033[31;1m%s: isegHal Mgt Queue Overflowed '%s': %s\033[0m\n", prec->name, pinfo->object, pinfo->value );
+      recGblSetSevr( prec, READ_ALARM, INVALID_ALARM ); // Set record to READ_ALARM
+      return ERROR;
+    }
   } 
 	else 
 	{
@@ -710,7 +636,7 @@ long devIsegHalRead( dbCommon *prec ) {
 			}
 			pinfo->time.secPastEpoch = seconds - POSIX_TIME_AT_EPICS_EPOCH;
 			pinfo->time.nsec = microsecs * 100000;
-  #ifdef CHECK_LAST_REFRESHED
+#ifdef CHECK_LAST_REFRESHED
 			epicsTimeStamp lastRefreshed;
 			if( sscanf( pinfo->rtime, "%u.%u", &lastRefreshed.secPastEpoch, &lastRefreshed.nsec ) != 2 ) {
 			  fprintf( stderr, "\033[31;1m%s: Error parsing timestamp for '%s': %s\033[0m\n", prec->name, pinfo->object, pinfo->rtime );
@@ -724,25 +650,25 @@ long devIsegHalRead( dbCommon *prec ) {
 			recGblSetSevr( prec, TIMEOUT_ALARM, INVALID_ALARM );
 			return ERROR;
 			}
-  #endif			
+#endif			
 		}
 		// IO_INTR record with errors wont callback
 		status = pdset->conv_val_str( prec, pinfo->value );
 		prec->pact = (epicsUInt8)false;
 		if( ERROR == status ) {
-          fprintf( stderr, "\033[31;1m%s: Error parsing value for '%s': %s\033[0m\n", prec->name, pinfo->object, pinfo->value );
-          recGblSetSevr( prec, READ_ALARM, INVALID_ALARM ); // Set record to READ_ALARM
-          return ERROR;
+        fprintf( stderr, "\033[31;1m%s: Error parsing value for '%s': %s\033[0m\n", prec->name, pinfo->object, pinfo->value );
+        recGblSetSevr( prec, READ_ALARM, INVALID_ALARM ); // Set record to READ_ALARM
+        return ERROR;
 		}
+
 		if( -2 == prec->tse ) {
         // timestamp is set by device support
 			prec->time = pinfo->time;
 		}
+
 		prec->udf = (epicsUInt8)false; /* We modify VAL so we are responsible for UDF too*/
-    }
-    return status;
-
-
+  }
+  return status;
 }
 
 //------------------------------------------------------------------------------
@@ -751,61 +677,61 @@ long devIsegHalRead( dbCommon *prec ) {
 //! @return      ERROR in case of an error, otherwise OK
 //------------------------------------------------------------------------------
 long devIsegHalWrite( dbCommon *prec ) {
-    devIsegHal_info_t *pinfo = (devIsegHal_info_t *)prec->dpvt;
-    devIsegHal_dset_t *pdset = (devIsegHal_dset_t *)prec->dset;
-    long status = 0;
-    if( prec->pact ) {
-      if( pinfo->ioStatus != ISEG_OK) { /* write successful ?*/
-        fprintf( stderr, "\033[31;1m%s Error while writing value '%s'\033[0m\n",
-          pinfo->interface, pinfo->object);
-          recGblSetSevr( prec, WRITE_ALARM, INVALID_ALARM ); // Set record to WRITE_ALAR
-        status = ERROR;
-      } else {
-          /* Only for I/O Intr processing */
-          if(pinfo->pflag == P_IO_INTR) {
-							std::cout << prec->name << " P_IO_INTR write (" << __FUNCTION__ << ") in thread id: "
-              << epicsThreadGetNameSelf() << std::endl;
-            status = pdset->conv_val_str( prec, pinfo->value );/*Non normal processing, new value receive from device*/
-          }
-          if( -2 == prec->tse ) prec->time = pinfo->time;
-            prec->pact = (epicsUInt8)false;
-            prec->udf = (epicsUInt8)false;
+  devIsegHal_info_t *pinfo = (devIsegHal_info_t *)prec->dpvt;
+  devIsegHal_dset_t *pdset = (devIsegHal_dset_t *)prec->dset;
+  long status = 0;
+  if( prec->pact ) {
+    if( pinfo->ioStatus != ISEG_OK) { /* write successful ?*/
+      fprintf( stderr, "\033[31;1m%s Error while writing value '%s'\033[0m\n",
+        pinfo->interface, pinfo->object);
+      recGblSetSevr( prec, WRITE_ALARM, INVALID_ALARM ); // Set record to WRITE_ALAR
+      status = ERROR;
+    } 
+    else {
+      /* Only for I/O Intr processing */
+      if(pinfo->pflag == P_IO_INTR) {
+				std::cout << prec->name << " P_IO_INTR write (" << __FUNCTION__ << ") in thread id: "
+          << epicsThreadGetNameSelf() << std::endl;
+        status = pdset->conv_val_str( prec, pinfo->value );/*Non normal processing, new value receive from device*/
       }
-      myIsegHalThread->enable();
-    					std::cout << prec->name << " :== Async write complete == : (" << __FUNCTION__ << ") in thread id: "
+      if( -2 == prec->tse ) prec->time = pinfo->time;
+      prec->pact = (epicsUInt8)false;
+      prec->udf = (epicsUInt8)false;
+    }
+    myIsegHalThread->enable();
+    std::cout << prec->name << " :== Async write complete == : (" << __FUNCTION__ << ") in thread id: "
               << epicsThreadGetNameSelf() << std::endl;
-      return status;
-    }
-    myIsegHalThread->disable();
-    /*std::cout << prec->name << " :== Starting write async operation == : (" << __FUNCTION__ << ") in thread id: "
-              << epicsThreadGetNameSelf() << std::endl;*/
-    char value[VALUE_SIZE];
-    status = pdset->conv_val_str( prec, value );//call devIsegHalWrite_ao is made to get rec conv val.
-    if( ERROR == status ) {
-      fprintf( stderr, "\033[31;1m%s: Error parsing value for '%s'\033[0m\n", prec->name, pinfo->object );
-      recGblSetSevr( prec, WRITE_ALARM, INVALID_ALARM ); // Set record to WRITE_ALARM
-      return ERROR;
-    }
-    //memcpy( pinfo->value, value, VALUE_SIZE ); 
-    prec->pact = (epicsUInt8)true; // signal that the  write operation will use callback
-    pinfo->ioStatus = ISEG_OK;
-    // record "normally" processed
-    devIsegHal_queue_t qmsg;
-		pinfo->pflag = P_ASYNC; // Normal processing;
-    qmsg.pdata = pinfo;
-    qmsg.reqType = SET_ITEM;
-    strncpy( qmsg.value, value, VALUE_SIZE );
-
-    /* Send write request to the servicing task */
-    if (epicsMessageQueueTrySend(isegClientQueue, &qmsg,
-        sizeof(devIsegHal_queue_t))){
-      fprintf( stderr, "\033[31;1m%s: isegHal Mgt Queue Overflowed '%s': %s\033[0m\n", prec->name, pinfo->object, value );
-      recGblSetSevr( prec, WRITE_ALARM, INVALID_ALARM ); // Set record to READ_ALARM
-      return ERROR;
-    }
     return status;
-}
+  }
+  myIsegHalThread->disable();
+  /*std::cout << prec->name << " :== Starting write async operation == : (" << __FUNCTION__ << ") in thread id: "
+              << epicsThreadGetNameSelf() << std::endl;*/
+  char value[VALUE_SIZE];
+  status = pdset->conv_val_str( prec, value );//call devIsegHalWrite_ao is made to get rec conv val.
+  if( ERROR == status ) {
+    fprintf( stderr, "\033[31;1m%s: Error parsing value for '%s'\033[0m\n", prec->name, pinfo->object );
+    recGblSetSevr( prec, WRITE_ALARM, INVALID_ALARM ); // Set record to WRITE_ALARM
+    return ERROR;
+  }
+  //memcpy( pinfo->value, value, VALUE_SIZE ); 
+  prec->pact = (epicsUInt8)true; // signal that the  write operation will use callback
+  pinfo->ioStatus = ISEG_OK;
+  // record "normally" processed
+  devIsegHal_queue_t qmsg;
+	pinfo->pflag = P_ASYNC; // Normal processing;
+  qmsg.pdata = pinfo;
+  qmsg.reqType = SET_ITEM;
+  strncpy( qmsg.value, value, VALUE_SIZE );
 
+  /* Send write request to the servicing task */
+  if (epicsMessageQueueTrySend(isegClientQueue, &qmsg,
+    sizeof(devIsegHal_queue_t))){
+    fprintf( stderr, "\033[31;1m%s: isegHal Mgt Queue Overflowed '%s': %s\033[0m\n", prec->name, pinfo->object, value );
+    recGblSetSevr( prec, WRITE_ALARM, INVALID_ALARM ); // Set record to READ_ALARM
+    return ERROR;
+  }
+  return status;
+}
 //------------------------------------------------------------------------------
 //! @brief       Switch all channels on/off by broadcast message
 //! @param [in]  prec   Address of record calling this function
@@ -834,6 +760,7 @@ long devIsegHalGlobalSwitchWrite( dbCommon *prec ) {
     myIsegHalThread->enable();
     return ERROR; 
   }
+
   if ( iseg_setItem( pinfo->interface, "Write", value ) != ISEG_OK ) {
     fprintf( stderr, "\033[31;1m%s: Error while sending broadcast command.\033[0m\n",
              prec->name );
@@ -842,6 +769,7 @@ long devIsegHalGlobalSwitchWrite( dbCommon *prec ) {
     myIsegHalThread->enable();
     return ERROR; 
   }
+
   if ( iseg_setItem( pinfo->interface, "Configuration", "0" ) != ISEG_OK ) {
     fprintf( stderr, "\033[31;1m%s: Error while starting data collector after sending broadcast.\033[0m\n",
              prec->name );
@@ -892,53 +820,47 @@ epicsThreadSleep(4);
 //! repeats the check.
 //------------------------------------------------------------------------------
 void isegHalThread::run() {
-
 std::cout <<"isegHal Thread:  "<< _run<<"(" << __FUNCTION__ << ") was called by thread id: " << epicsThreadGetNameSelf()<< std::endl;
- while( true ) {
-    std::list<devIsegHal_info_t*>::iterator it = _recs.begin();
-    if( _pause > 0. ) this->thread.sleep( _pause ); 
+while( true ) {
+  std::list<devIsegHal_info_t*>::iterator it = _recs.begin();
+  if( _pause > 0. ) this->thread.sleep( _pause ); 
 
-    if( !_run ) continue;
+  if( !_run ) continue;
 
-    // some "benchmarking"
-    struct timespec	start;
+  // some "benchmarking"
+  struct timespec	start;
 #ifdef _POSIX_CPUTIME
 	clock_gettime( CLOCK_PROCESS_CPUTIME_ID, &start );
 #else
 	clock_gettime( CLOCK_MONOTONIX, &start );
 #endif
-//std::cout << _recs.front()->object << _recs.back()->object << " : "<<_run<<_pause<<_debug<< "(" << __FUNCTION__ << ") was called by thread id: " << epicsThreadGetNameSelf()<< std::endl;
-      for( ; it != _recs.end(); ++it ) {
+  //std::cout << _recs.front()->object << _recs.back()->object << " : "<<_run<<_pause<<_debug<< "(" << __FUNCTION__ << ") was called by thread id: " << epicsThreadGetNameSelf()<< std::endl;
+  for( ; it != _recs.end(); ++it ) {
 
-        if( 3 <= _debug )
-          printf( "isegHalThread::run: Reading item '%s'\n", (*it)->object );
+    if( 3 <= _debug )
+    printf( "isegHalThread::run: Reading item '%s'\n", (*it)->object );
 
-/*          std::cout << "Interrupt Record : " << (*it)->object    << " was called by thread id: "
-                    << epicsThreadGetNameSelf()
-                    << std::endl;*/
-if ((*it)) {
-				(*it)->pflag = P_IO_INTR; // to be sure.
-        devIsegHal_queue_t qmsg = {(*it), GET_ITEM, NULL};
-        // Send it to the servicing task 
-        if (epicsMessageQueueTrySend(isegClientQueue, &qmsg,
-            sizeof(devIsegHal_queue_t))){
-            fprintf( stderr, "\033[31;1m%s: Warning: iseg Client Mgt queue overflow.\033[0m\n",
-              (*it)->object);
-        }
-}
+    if ((*it)) {
+			(*it)->pflag = P_IO_INTR; // to be sure.
+      devIsegHal_queue_t qmsg = {(*it), GET_ITEM, NULL};
+      // Send it to the servicing task 
+      if (epicsMessageQueueTrySend(isegClientQueue, &qmsg,
+        sizeof(devIsegHal_queue_t))){
+        fprintf( stderr, "\033[31;1m%s: Warning: iseg Client Mgt queue overflow.\033[0m\n",
+        (*it)->object);
       }
-
-    // some "benchmarking"
-
-    if( 1 <= _debug ) {
+    }
+  }
+  // some "benchmarking"
+  if( 1 <= _debug ) {
       struct timespec	stop;
 #ifdef _POSIX_CPUTIME
 	  clock_gettime( CLOCK_PROCESS_CPUTIME_ID, &stop );
 #else
 	  clock_gettime( CLOCK_MONOTONIX, &stop );
 #endif
-      printf( "isegHalThread::run: needed %lf seconds for %lu records\n",
-               timespec_diff( &stop, &start ), (unsigned long)_recs.size() );
+    printf( "isegHalThread::run: needed %lf seconds for %lu records\n",
+            timespec_diff( &stop, &start ), (unsigned long)_recs.size() );
 		}
   }
 }
@@ -953,13 +875,10 @@ void isegHalThread::registerInterrupt( dbCommon* prec,  devIsegHal_info_t *pinfo
 
   if( 1 <= _debug )
     printf( "isegHalThread: Register new record '%s'\n", prec->name );
-          /*std::cout << "Registered Record : " << pinfo->object    << " thread id: "
-                    << epicsThreadGetNameSelf()
-                    << std::endl;*/
   _recs.push_back( pinfo );
   // to be sure that each record is only added once
-  _recs.sort();
-  _recs.unique();
+    _recs.sort();
+    _recs.unique();
 }
 
 //------------------------------------------------------------------------------
