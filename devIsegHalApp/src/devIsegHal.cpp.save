@@ -326,7 +326,7 @@ static void isegMgtTask() {
                 memcpy( _pdata->value, item.value, VALUE_SIZE );
                 _pdata->time = time;
                 _pdata->pflag = _proc;  // better be sure;
-                callbackRequest( _pdata->pcallback );
+                //callbackRequest( _pdata->pcallback );
               }
             }
             break;
@@ -341,7 +341,7 @@ static void isegMgtTask() {
         myIsegHalThread->disable();
         std::cout << " write request "<< _value.c_str() << " run from thread: " << epicsThreadGetNameSelf() << std::endl;
         if( iseg_setItem( _pdata->interface, _pdata->object, _value.c_str() ) != ISEG_OK ) {
-          fprintf( stderr, "\033[31;1m%s Error while writing value '%s': '%s'\033[0m\n", _pdata->interface,_pdata->object, _value.c_str() );
+          /*fprintf( stderr, "\033[31;1m%s Error while writing value '%s': '%s'\033[0m\n", _pdata->interface,_pdata->object, _value.c_str() );*/
           _pdata->ioStatus = ISEG_ERROR;
         }
         _pdata->pflag = P_ASYNC; // Normal processing write always async
@@ -677,53 +677,59 @@ long devIsegHalRead( dbCommon *prec ) {
 //! @return      ERROR in case of an error, otherwise OK
 //------------------------------------------------------------------------------
 long devIsegHalWrite( dbCommon *prec ) {
-	
-	devIsegHal_info_t *pinfo = (devIsegHal_info_t *)prec->dpvt;
-	devIsegHal_dset_t *pdset = (devIsegHal_dset_t *)prec->dset;
-	long status = 0;
-
-	if( prec->pact ) {
-
-    if( pinfo->ioStatus != ISEG_OK) {  //write successful ?
+  devIsegHal_info_t *pinfo = (devIsegHal_info_t *)prec->dpvt;
+  devIsegHal_dset_t *pdset = (devIsegHal_dset_t *)prec->dset;
+  long status = 0;
+  if( prec->pact ) {
+    if( pinfo->ioStatus != ISEG_OK) { /* write successful ?*/
       fprintf( stderr, "\033[31;1m%s Error while writing value '%s'\033[0m\n",
         pinfo->interface, pinfo->object);
       recGblSetSevr( prec, WRITE_ALARM, INVALID_ALARM ); // Set record to WRITE_ALAR
       status = ERROR;
-    }
-
-		if(pinfo->pflag == P_IO_INTR) {
-       	std::cout << prec->name << " :P_IO_INTR: set VAL:" << pinfo->value << " (" << __FUNCTION__ << ") in thread id: "
-          					<< epicsThreadGetNameSelf() << std::endl;
-        	status = pdset->conv_val_str( prec, pinfo->value );//Non normal processing, new value receive from device
-    }
-
-		if( -2 == prec->tse ) prec->time = pinfo->time;
-	    prec->pact = (epicsUInt8)false;
+    } 
+    else {
+      /* Only for I/O Intr processing */
+      if(pinfo->pflag == P_IO_INTR) {
+				std::cout << prec->name << " :P_IO_INTR: set VAL :" << pinfo->value << " (" << __FUNCTION__ << ") in thread id: "
+          << epicsThreadGetNameSelf() << std::endl;
+        status = pdset->conv_val_str( prec, pinfo->value );/*Non normal processing, new value receive from device*/
+      }
+      if( -2 == prec->tse ) prec->time = pinfo->time;
+      prec->pact = (epicsUInt8)false;
       prec->udf = (epicsUInt8)false;
- 			std::cout << prec->name <<" : " << pinfo->value << " :== Completing write async operation == : (" << __FUNCTION__ << ") in thread id: "
+    }
+    myIsegHalThread->enable();
+    std::cout << prec->name << " :== Async write complete == : (" << __FUNCTION__ << ") in thread id: "
               << epicsThreadGetNameSelf() << std::endl;
+    return status;
+  }
+  myIsegHalThread->disable();
+  std::cout << prec->name << " :== Starting write async operation == : (" << __FUNCTION__ << ") in thread id: "
+              << epicsThreadGetNameSelf() << std::endl;
+  char value[VALUE_SIZE];
+  status = pdset->conv_val_str( prec, value );//call devIsegHalWrite_ao is made to get rec conv val.
+  if( ERROR == status ) {
+    fprintf( stderr, "\033[31;1m%s: Error parsing value for '%s'\033[0m\n", prec->name, pinfo->object );
+    recGblSetSevr( prec, WRITE_ALARM, INVALID_ALARM ); // Set record to WRITE_ALARM
+    return ERROR;
+  }
+  memcpy( pinfo->value, value, VALUE_SIZE ); 
+  prec->pact = (epicsUInt8)true; // signal that the  write operation will use callback
+  pinfo->ioStatus = ISEG_OK;
+  // record "normally" processed
+  devIsegHal_queue_t qmsg;
+	pinfo->pflag = P_ASYNC; // Normal processing;
+  qmsg.pdata = pinfo;
+  qmsg.reqType = SET_ITEM;
+  strncpy( qmsg.value, value, VALUE_SIZE );
 
-	}
-  else {
-		myIsegHalThread->disable();
-		char _value[VALUE_SIZE];
-  	status = pdset->conv_val_str( prec, _value );
-    std::cout << prec->name <<" : " << _value << " :== Starting write async operation == : (" << __FUNCTION__ << ") in thread id: "
-             << epicsThreadGetNameSelf() << std::endl;
-	  devIsegHal_queue_t qmsg;
-    pinfo->pflag = P_ASYNC; // Normal processing;
-  	qmsg.pdata = pinfo;
-  	qmsg.reqType = SET_ITEM;
-  	strncpy( qmsg.value, _value, VALUE_SIZE );
-  //Send write request to the servicing task
-  	if (epicsMessageQueueTrySend(isegClientQueue, &qmsg,
-    	sizeof(devIsegHal_queue_t))){
-    	fprintf( stderr, "\033[31;1m%s: isegHal Mgt Queue Overflowed '%s': %s\033[0m\n", prec->name, pinfo->object, _value );
-    	recGblSetSevr( prec, WRITE_ALARM, INVALID_ALARM ); // Set record to READ_ALARM
-    	return ERROR;
-  	}
-	}
-	myIsegHalThread->enable();
+  /* Send write request to the servicing task */
+  if (epicsMessageQueueTrySend(isegClientQueue, &qmsg,
+    sizeof(devIsegHal_queue_t))){
+    fprintf( stderr, "\033[31;1m%s: isegHal Mgt Queue Overflowed '%s': %s\033[0m\n", prec->name, pinfo->object, value );
+    recGblSetSevr( prec, WRITE_ALARM, INVALID_ALARM ); // Set record to READ_ALARM
+    return ERROR;
+  }
   return status;
 }
 //------------------------------------------------------------------------------

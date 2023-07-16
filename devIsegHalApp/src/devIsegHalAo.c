@@ -110,7 +110,7 @@ static long devIsegHalWrite_ao( dbCommon *prec, char* value ) {
   aoRecord* pao = (aoRecord *)prec;
 
   if( pao->pact ) {
-//		printf( "devIsegHalWrite_ao: Wrting to rec val '%s'\n", prec->name);
+		printf( "devIsegHalWrite_ao: Wrting to rec val '%s'\n", prec->name);
     epicsFloat64 buffer = 0.;
     if( sscanf( value, "%lf", &buffer ) != 1 ) {
       return ERROR;
@@ -118,7 +118,7 @@ static long devIsegHalWrite_ao( dbCommon *prec, char* value ) {
     pao->val = buffer;
     return DO_NOT_CONVERT;
   }
-//	printf( "devIsegHalWrite_ao: Fetching rec val '%s'\n", prec->name);
+	printf( "devIsegHalWrite_ao: Fetching rec val '%s'\n", prec->name);
   if( sprintf( value, "%lf", pao->val ) < 0 ) {
     return ERROR;
   }
