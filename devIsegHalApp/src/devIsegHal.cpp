@@ -350,7 +350,7 @@ static void isegMgtTask() {
           fprintf( stderr, "\033[31;1m%s: Error while stopping data collector for sending broadcast.\033[0m\n",
              prec->name );
           iseg_setItem( _pdata->interface, "Configuration", "0"); // Restore function
-          _pdata->ioStatus = WRITE_ALARM;
+          _pdata->ioStatus = ISEG_ERROR;
           continue;
         }
 
@@ -358,7 +358,7 @@ static void isegMgtTask() {
           fprintf( stderr, "\033[31;1m%s: Error while sending broadcast command.\033[0m\n",
               prec->name );
           iseg_setItem( _pdata->interface, "Configuration", "0"); // Restore function
-          _pdata->ioStatus = WRITE_ALARM;
+          _pdata->ioStatus = ISEG_ERROR;
           continue;
         }
 
@@ -366,7 +366,7 @@ static void isegMgtTask() {
           fprintf( stderr, "\033[31;1m%s: Error while starting data collector after sending broadcast.\033[0m\n",
               prec->name );
           recGblSetSevr( prec, WRITE_ALARM, INVALID_ALARM ); // Set record to WRITE_ALARM
-          _pdata->ioStatus = WRITE_ALARM;
+          _pdata->ioStatus = ISEG_ERROR;
           continue;
         }
 
