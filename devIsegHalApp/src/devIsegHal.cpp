@@ -308,7 +308,7 @@ static void isegMgtTask() {
             epicsUInt32 seconds = 0;
             epicsUInt32 microsecs = 0;
             if( sscanf( item.timeStampLastChanged, "%u.%u", &seconds, &microsecs ) != 2 ) timestampchanged = false;
-            
+
             epicsTimeStamp time;
             time.secPastEpoch = seconds - POSIX_TIME_AT_EPICS_EPOCH;
             time.nsec = microsecs * 100000;
@@ -336,7 +336,7 @@ static void isegMgtTask() {
         std::cout << " write request "<< _value.c_str() << " run from thread: " << epicsThreadGetNameSelf() << std::endl;
         if( iseg_setItem( _pdata->interface, _pdata->object, _value.c_str() ) != ISEG_OK ) {
           fprintf( stderr, "\033[31;1m%s Error while writing value '%s': '%s'\033[0m\n", _pdata->interface,_pdata->object, _value.c_str() );
-          _pdata->ioStatus = WRITE_ALARM;
+          _pdata->ioStatus = ISEG_ERROR;
         }
         _pdata->pflag = P_ASYNC; // Normal processing write always async
         epicsTimeGetCurrent( &_pdata->time ); // get time after successful write to device
@@ -347,25 +347,21 @@ static void isegMgtTask() {
       {
         _pdata->ioStatus = ISEG_OK;
         if ( iseg_setItem( _pdata->interface, "Configuration", "1" ) != ISEG_OK ) {
-          fprintf( stderr, "\033[31;1m%s: Error while stopping data collector for sending broadcast.\033[0m\n",
-             prec->name );
+          fprintf( stderr, "\033[31;1m%s Error while writing configuration '%s'\033[0m\n", _pdata->interface,_pdata->object );
           iseg_setItem( _pdata->interface, "Configuration", "0"); // Restore function
           _pdata->ioStatus = ISEG_ERROR;
           continue;
         }
 
-        if ( iseg_setItem( _pdata->interface, "Write", value ) != ISEG_OK ) {
-          fprintf( stderr, "\033[31;1m%s: Error while sending broadcast command.\033[0m\n",
-              prec->name );
+        if ( iseg_setItem( _pdata->interface, _pdata->object, _value.c_str() ) != ISEG_OK ) {
+          fprintf( stderr, "\033[31;1m%s Error while writing value '%s': '%s'\033[0m\n", _pdata->interface,_pdata->object, _value.c_str() );
           iseg_setItem( _pdata->interface, "Configuration", "0"); // Restore function
           _pdata->ioStatus = ISEG_ERROR;
           continue;
         }
 
-        if ( iseg_setItem( pinfo->interface, "Configuration", "0" ) != ISEG_OK ) {
-          fprintf( stderr, "\033[31;1m%s: Error while starting data collector after sending broadcast.\033[0m\n",
-              prec->name );
-          recGblSetSevr( prec, WRITE_ALARM, INVALID_ALARM ); // Set record to WRITE_ALARM
+        if ( iseg_setItem( _pdata->interface, "Configuration", "0" ) != ISEG_OK ) {
+          fprintf( stderr, "\033[31;1m%s Error while writing configuration '%s'\033[0m\n", _pdata->interface,_pdata->object );
           _pdata->ioStatus = ISEG_ERROR;
           continue;
         }
@@ -599,7 +595,9 @@ long devIsegHalGlobalSwitchInit( dbCommon *prec, const devIsegHal_rec_t *pconf )
 //------------------------------------------------------------------------------
 long devIsegHalGetIoIntInfo( int cmd, dbCommon *prec, IOSCANPVT *ppvt ) {
   devIsegHal_info_t *pinfo = (devIsegHal_info_t *)prec->dpvt;
-  *ppvt = pinfo->ioscanpvt;
+
+	if (pinfo) *ppvt = pinfo->ioscanpvt; // deal with crash when crates are not  on
+
   if ( 0 == cmd ) {
 
     myIsegHalThread->registerInterrupt( prec, pinfo );
